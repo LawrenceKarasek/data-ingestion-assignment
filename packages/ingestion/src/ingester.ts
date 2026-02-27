@@ -5,7 +5,7 @@ const API_KEY = process.env.TARGET_API_KEY!;
 const FEED_PATH = process.env.FEED_PATH || '/api/v1/events/d4ta/x7k9/feed';
 const LIMIT = 5000;
 const TOKEN_REFRESH_BUFFER_MS = 30_000;
-const FETCH_DELAY_MS = 200;
+const FETCH_DELAY_MS = 500;
 
 interface StreamAccess {
   endpoint: string;
@@ -121,9 +121,18 @@ export async function runIngestion(): Promise<void> {
       await sleep(FETCH_DELAY_MS);
 
     } catch (err: any) {
-      consecutiveErrors++;
       const is429 = err.message?.includes('429');
-      const waitMs = is429 ? 10_000 : 2000 * consecutiveErrors;
+
+      if (is429) {
+        console.warn('[rate-limit] 429 received, waiting 60s before retry...');
+        cachedAccess = null;
+        await sleep(60_000);
+        consecutiveErrors = 0;
+        continue;
+      }
+
+      consecutiveErrors++;
+      const waitMs = 2000 * consecutiveErrors;
       console.error(`[error] Attempt ${consecutiveErrors}/5 (waiting ${waitMs}ms):`, err.message);
       if (consecutiveErrors >= 5) throw new Error('5 consecutive errors — aborting.');
       cachedAccess = null;
